@@ -18,20 +18,20 @@ Before running the script, ensure your system meets the following criteria:
 ## How to Use
 
 1. Download the Script:
-   - Save the remote_play_bridger.sh file to a directory of your choice.
+   - Save the remote_play_enabler.sh file to a directory of your choice.
 
 2. Make it Executable:
    - Open your terminal, navigate to the directory where you saved the file, and run the following command to grant execution permissions:
 
 ```
-chmod +x remote_play_bridger.sh
+chmod +x remote_play_enabler.sh
 ```
 
 3. Run the Script:
    - Execute the script using the terminal:
 
 ```
-./remote_play_bridger.sh
+./remote_play_enabler.sh
 ```
 
 4. First Run Setup:
