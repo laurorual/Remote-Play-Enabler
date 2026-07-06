@@ -48,6 +48,10 @@ chmod +x remote_play_enabler.sh
    - The script automatically saves configured games to your history.
    - Relaunch the script to swap out the active game, restore a previous configuration, clear current symlinks, or permanently delete a game from your history.
 
+7. Fixing problems:
+   - The script have an option to fix possible problems you could have with this method.
+   - As i keep using this script and find new problems and fixes, i'll be adding those fixes to this option so the script can handle it for you.
+
 ## Credits and Disclaimer
 
 Concept and Logic: Created and directed by me.
