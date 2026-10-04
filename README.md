@@ -28,6 +28,10 @@ that opens `steam://install/1118310` through Steam.
 - Select the game you want to play and click on "Enable".
 - You can now start RetroArch through the button "Start Game" or through Steam. The non-steam game should open, with Steam's overlay working. Now you can invite your friends through Remote Play Together!
 
+You can view a log of everything the app is doing in the following path:
+- Linux: `~/.config/remote-play-enabler/log.txt`
+- Windows: `%APPDATA%\RemotePlayEnabler\log.txt`
+
 ## Running from source
 
 Install Python 3.11+ and then:
