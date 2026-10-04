@@ -1,58 +1,91 @@
 # Remote Play Enabler
 
-## Description
-Remote Play Enabler is a Linux bash script designed to seamlessly integrate non-Steam games with Steam's Remote Play Together feature. By leveraging RetroArch's Remote Play capabilities, this script automates the process of creating symlinks from your non-Steam game directory directly into the Steam RetroArch folder. It temporarily masks your game's executable as retroarch.exe, allowing Steam to broadcast it to your friends.
+<img width="764" height="584" alt="image" src="https://github.com/user-attachments/assets/01655054-d22c-4a25-9f30-daacb746a82f" />
 
-The script features a safe symlink cleanup process, a history tracker to easily switch between previously configured games, and a detailed logging system to keep track of all background actions.
+
+
+## Description
+Remote Play Enabler is a Linux and Windows app designed to seamlessly integrate non-Steam games with Steam's Remote Play Together feature. By leveraging RetroArch's Remote Play capabilities, this app automates the process of creating symlinks from your non-Steam game directory directly into the Steam RetroArch folder. It temporarily masks your game as RetroArch, allowing Steam to broadcast it to your friends.
+
+The app features a safe symlink cleanup process, a history tracker to easily switch between previously configured games, and a detailed logging system to keep track of all background actions.
 
 ## Requirements
 
-Before running the script, ensure your system meets the following criteria:
+- Steam.
+- **RetroArch installed through Steam** (Steam AppID `1118310`).
+- On Linux, the Steam RetroArch entry must be configured to run through **Proton**.
 
-1. A Linux-based operating system.
-2. Bash shell environment.
-3. Steam installed and running.
-4. RetroArch installed via Steam.
-5. Proton Experimental enabled for RetroArch. (To do this: Right-click RetroArch in your Steam Library > Properties > Compatibility > Force the use of a specific Steam Play compatibility tool > Select "Proton Experimental").
+In the app's **How To** section there is an `Install RetroArch on Steam` button
+that opens `steam://install/1118310` through Steam.
 
 ## How to Use
 
-1. Download the Script:
-   - Save the remote_play_enabler.sh file to a directory of your choice.
+- Go to the Releases page, download the latest version of the app for your system (Linux or Windows) and open it.
+- Make sure you have RetroArch installed through Steam. If not, you can click in the button "How To" and install it through there. (If you are on Linux, enable Proton on RetroArch as well).
+- Click on "Choose RetroArch Folder..." and select your RetroArch folder.
+- Click on "Prepare/Backup RetroArch" so the RetroArch's folder gets empty and backed up.
+- Click on "Add Game..." and add any non-steam game you want to play with Remote Play through Steam.
+- Select the game you want to play and click on "Enable".
+- You can now start RetroArch through the button "Start Game" or through Steam. The non-steam game should open, with Steam's overlay working. Now you can invite your friends through Remote Play Together!
 
-2. Make it Executable:
-   - Open your terminal, navigate to the directory where you saved the file, and run the following command to grant execution permissions:
+## Running from source
 
+Install Python 3.11+ and then:
+
+```bash
+python -m venv .venv
 ```
-chmod +x remote_play_enabler.sh
+
+Linux:
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
 ```
 
-3. Run the Script:
-   - Execute the script using the terminal:
+Windows PowerShell:
 
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python main.py
 ```
-./remote_play_enabler.sh
+
+## Building a standalone single-file application
+
+Builds are platform-specific: create the Windows executable on Windows and the
+Linux binary on Linux. PyInstaller is not a cross-compiler.
+
+### Windows
+
+Open PowerShell in the source folder and run:
+
+```powershell
+.\build-windows.ps1
 ```
 
-4. First Run Setup:
-   - The script will ask for the full path to your Steam RetroArch folder. (You can use ~ for your home folder and the TAB key to auto-complete paths).
-   - This path will be saved in a settings.txt file so you only have to do this once.
+Result:
 
-5. Linking a Game:
-   - Select the option to set up a new game.
-   - Provide the game's name, the full path to its folder, and the exact name of its executable file (e.g., game.exe).
-   - The script will generate the necessary symlinks.
-   - You can now launch RetroArch on Steam, and it will launch your non-Steam game with Remote Play Together enabled.
+`dist\RemotePlayEnabler.exe`
 
-6. Managing Games:
-   - The script automatically saves configured games to your history.
-   - Relaunch the script to swap out the active game, restore a previous configuration, clear current symlinks, or permanently delete a game from your history.
+### Linux
 
-7. Fixing problems:
-   - The script have an option to fix possible problems you could have with this method.
-   - As i keep using this script and find new problems and fixes, i'll be adding those fixes to this option so the script can handle it for you.
+Run:
+
+```bash
+./build-linux.sh
+```
+
+Result:
+
+`dist/RemotePlayEnabler`
+
+Both are single-file builds and include Python, PySide6 and the other runtime
+dependencies; end users do not need Python installed.
 
 ## Credits and Disclaimer
 
-Concept and Logic: Created and directed by me.
-Development Assistance: The code was generated and refined with the assistance of an AI (Google Gemini).
+This app will NOT enable games with DRM to open without proper patching or authorization, so make sure your game opens first before adding it to this app.
+
+AI assistance disclosure: ChatGPT was used extensively during implementation, code review and debugging. I directed the project development and manually built, tested and reviewed each milestone on real hardware.
