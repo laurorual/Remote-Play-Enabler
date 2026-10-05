@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,6 +59,42 @@ def _unity_data_source(game_dir: Path, executable_path: Path) -> Path | None:
         if len(candidates) == 1:
             return candidates[0]
 
+    return None
+
+
+def _matching_pck_source(executable_path: Path) -> Path | None:
+    """Return a .pck next to the executable with the same basename.
+
+    Godot projects commonly require the PCK filename to match the executable
+    filename. Because the selected executable is exposed as retroarch.exe, the
+    matching PCK must be exposed as retroarch.pck as well.
+    """
+    parent = executable_path.parent
+    expected_name = f"{executable_path.stem}.pck".casefold()
+
+    try:
+        matches = [
+            child
+            for child in parent.iterdir()
+            if child.is_file() and child.name.casefold() == expected_name
+        ]
+    except OSError:
+        logger.exception("Could not scan for PCK next to %s", executable_path)
+        return None
+
+    if len(matches) == 1:
+        logger.info("Detected matching PCK sidecar: %s", matches[0])
+        return matches[0]
+
+    if len(matches) > 1:
+        logger.warning(
+            "Multiple matching PCK sidecars found next to %s; using %s",
+            executable_path,
+            matches[0],
+        )
+        return matches[0]
+
+    logger.debug("No matching PCK sidecar found next to %s", executable_path)
     return None
 
 
@@ -115,6 +152,7 @@ def build_plan(game: Game, retroarch_dir: Path) -> list[PlannedLink]:
         raise LinkError(f"RetroArch folder does not exist: {retroarch_dir}")
 
     unity_data = _unity_data_source(game_dir, executable_path)
+    pck_source = _matching_pck_source(executable_path)
     plan: list[PlannedLink] = []
     windows_symlink_allowed: bool | None = None
 
@@ -124,6 +162,8 @@ def build_plan(game: Game, retroarch_dir: Path) -> list[PlannedLink]:
     for source in game_dir.iterdir():
         if source == executable_path:
             dest_name = "retroarch.exe"
+        elif pck_source is not None and source == pck_source:
+            dest_name = "retroarch.pck"
         elif unity_data is not None and source == unity_data:
             dest_name = "retroarch_Data"
         else:
@@ -139,6 +179,15 @@ def build_plan(game: Game, retroarch_dir: Path) -> list[PlannedLink]:
     if executable_path.parent != game_dir:
         item, windows_symlink_allowed = _planned_link(
             executable_path, retroarch_dir / "retroarch.exe", windows_symlink_allowed
+        )
+        plan.append(item)
+
+    # Godot games may require a .pck with the exact same basename as the
+    # executable. Since the executable becomes retroarch.exe, expose its
+    # matching sidecar as retroarch.pck.
+    if pck_source is not None and pck_source.parent != game_dir:
+        item, windows_symlink_allowed = _planned_link(
+            pck_source, retroarch_dir / "retroarch.pck", windows_symlink_allowed
         )
         plan.append(item)
 
@@ -247,16 +296,46 @@ def remove_managed_entry(entry: ManagedEntry) -> None:
     logger.debug("Removing managed entry: %s | kind=%s", entry.destination, entry.kind)
     path = Path(entry.destination)
 
-    try:
-        if entry.kind == "junction" and sys.platform == "win32":
-            if path.exists():
-                os.rmdir(path)
+    # Windows may briefly deny deletion while shell/AV/indexing components are
+    # inspecting a freshly-created executable. Retry transient sharing/access
+    # failures instead of immediately aborting the whole cleanup.
+    attempts = 8 if sys.platform == "win32" else 1
+    delay = 0.20
+
+    for attempt in range(1, attempts + 1):
+        try:
+            if entry.kind == "junction" and sys.platform == "win32":
+                if path.exists():
+                    os.rmdir(path)
+                return
+
+            if path.is_symlink() or path.exists():
+                path.unlink()
             return
 
-        if path.is_symlink() or path.exists():
-            path.unlink()
-    except FileNotFoundError:
-        pass
+        except FileNotFoundError:
+            return
+
+        except OSError as exc:
+            winerror = getattr(exc, "winerror", None)
+            retryable = (
+                sys.platform == "win32"
+                and winerror in {5, 32, 33}
+                and attempt < attempts
+            )
+
+            if not retryable:
+                raise
+
+            logger.warning(
+                "Windows temporarily refused to remove %s (WinError %s). "
+                "Retrying %d/%d...",
+                path,
+                winerror,
+                attempt,
+                attempts,
+            )
+            time.sleep(delay)
 
 
 def cleanup_entries(entries: list[ManagedEntry]) -> None:

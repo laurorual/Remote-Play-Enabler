@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import logging
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFileInfo
@@ -34,8 +36,12 @@ def _cache_path(game: Game, executable: Path) -> Path:
 def _extract_icon_to_png(executable: Path, output: Path) -> bool:
     """
     Extract the first Windows icon resource from a PE executable and normalize
-    it to PNG. Using icoextract avoids maintaining our own PE resource parser;
-    PNG also gives Qt a simple, reliable format to display on Linux and Windows.
+    it to PNG.
+
+    Resource objects are explicitly released before returning. This matters on
+    Windows because the active RetroArch executable may be a hardlink to this
+    same underlying file, and a lingering file handle can prevent that hardlink
+    from being deleted.
     """
     logger.debug("Icon extraction started: %s", executable)
 
@@ -55,6 +61,9 @@ def _extract_icon_to_png(executable: Path, output: Path) -> bool:
         )
         return False
 
+    extractor = None
+    icon_stream = None
+
     try:
         extractor = IconExtractor(str(executable))
         icon_stream = extractor.get_icon(num=0)
@@ -64,7 +73,6 @@ def _extract_icon_to_png(executable: Path, output: Path) -> bool:
             selected = None
             sizes = []
 
-            # Pillow's ICO reader exposes all embedded sizes through .ico.
             ico_reader = getattr(image, "ico", None)
             if ico_reader is not None and hasattr(ico_reader, "sizes"):
                 try:
@@ -74,11 +82,19 @@ def _extract_icon_to_png(executable: Path, output: Path) -> bool:
                         reverse=True,
                     )
                 except Exception:
-                    logger.exception("Could not enumerate embedded ICO sizes for %s", executable)
+                    logger.exception(
+                        "Could not enumerate embedded ICO sizes for %s",
+                        executable,
+                    )
 
             if sizes and ico_reader is not None and hasattr(ico_reader, "getimage"):
                 chosen = sizes[0]
-                logger.debug("Embedded icon sizes for %s: %s; using %s", executable, sizes, chosen)
+                logger.debug(
+                    "Embedded icon sizes for %s: %s; using %s",
+                    executable,
+                    sizes,
+                    chosen,
+                )
                 selected = ico_reader.getimage(chosen)
             else:
                 logger.debug(
@@ -90,7 +106,6 @@ def _extract_icon_to_png(executable: Path, output: Path) -> bool:
 
             selected = selected.convert("RGBA")
 
-            # Huge icon resources are unnecessary for the list and waste cache space.
             if selected.width > 256 or selected.height > 256:
                 resampling = getattr(Image, "Resampling", Image).LANCZOS
                 selected.thumbnail((256, 256), resampling)
@@ -102,11 +117,34 @@ def _extract_icon_to_png(executable: Path, output: Path) -> bool:
         return True
 
     except IconExtractorError as exc:
-        logger.warning("No usable embedded icon could be extracted from %s: %s", executable, exc)
+        logger.warning(
+            "No usable embedded icon could be extracted from %s: %s",
+            executable,
+            exc,
+        )
         return False
     except Exception:
         logger.exception("Unexpected error while extracting icon from %s", executable)
         return False
+    finally:
+        # get_icon() normally returns an in-memory stream, but close it when the
+        # object supports close(). Also drop the extractor explicitly rather
+        # than relying on non-deterministic cleanup.
+        if icon_stream is not None:
+            try:
+                close = getattr(icon_stream, "close", None)
+                if close is not None:
+                    close()
+            except Exception:
+                logger.exception("Could not close icon stream for %s", executable)
+
+        icon_stream = None
+        extractor = None
+
+        # CPython normally releases these immediately, but this also clears any
+        # cyclic object graphs from the PE/icon libraries before hardlink
+        # cleanup can be attempted later.
+        gc.collect()
 
 
 def icon_for_game(game: Game) -> QIcon:
@@ -145,8 +183,19 @@ def icon_for_game(game: Game) -> QIcon:
             return icon
         logger.warning("Qt could not load extracted PNG icon: %s", cache)
 
-    # On Linux this usually returns the generic MIME/application icon rather
-    # than the embedded Windows icon, but it is still a useful visual fallback.
+    # QFileIconProvider asks the Windows shell for an executable's icon. Some
+    # shell/icon handlers keep a file handle open longer than expected. Since
+    # retroarch.exe can be a hardlink to this exact file, that can make Windows
+    # refuse to delete the managed hardlink. Do not touch the EXE through the
+    # shell on Windows; an empty icon is safer than holding the game file open.
+    if sys.platform == "win32":
+        logger.warning(
+            "Embedded icon unavailable for '%s'; skipping Windows shell icon fallback "
+            "to avoid locking the executable.",
+            game.name,
+        )
+        return QIcon()
+
     logger.warning(
         "Falling back to the operating-system file icon for '%s' (%s).",
         game.name,
